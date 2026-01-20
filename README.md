@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- ✅ **多种按键事件**: 按下、抬起、单击、双击、长按开始、长按保持、重复按下
+- ✅ **多种按键事件**: 按下、抬起、单击、双击、三击、长按开始、长按保持、6秒长按抬起、12秒长按到达、重复按下
 - ✅ **硬件去抖**: 内置数字滤波，消除按键抖动
 - ✅ **状态机驱动**: 清晰的状态转换逻辑，可靠性高
 - ✅ **多按键支持**: 支持无限数量的按键实例
@@ -12,6 +12,7 @@
 - ✅ **内存优化**: 紧凑的数据结构，低内存占用
 - ✅ **配置灵活**: 可自定义时间参数和功能选项
 - ✅ **参数验证**: 完善的错误检查和边界条件处理
+- ✅ **低功耗支持**: 所有按键空闲时通过全局回调通知用户
 
 ## 优化改进
 
@@ -26,6 +27,9 @@
 - 新增 `button_reset()` - 重置按键状态
 - 新增 `button_is_pressed()` - 查询当前按键状态
 - 新增 `button_get_repeat_count()` - 获取重复按下次数
+- 新增 `button_set_idle_callback()` - 设置全局空闲回调
+- 支持三击检测 (`BTN_TRIPLE_CLICK`)
+- 支持多级长按：6秒长按抬起、12秒长按到达
 - 改进的 `button_get_event()` 函数
 
 ### 3. 安全性提升
@@ -215,6 +219,59 @@ void timer_5ms_interrupt_handler(void)
 }
 ```
 
+## 高级功能示例
+
+### 三击检测
+
+```c
+void btn_triple_click_handler(Button* btn)
+{
+    printf("Button triple clicked!\n");
+}
+
+button_attach(&btn1, BTN_TRIPLE_CLICK, btn_triple_click_handler);
+```
+
+### 多级长按
+
+```c
+// 6秒长按抬起事件
+void btn_6s_up_handler(Button* btn)
+{
+    printf("Long press 6s released!\n");
+}
+
+// 12秒长按到达事件
+void btn_12s_hold_handler(Button* btn)
+{
+    printf("Long press 12s reached!\n");
+}
+
+button_attach(&btn1, BTN_LONG_PRESS_6S_UP, btn_6s_up_handler);
+button_attach(&btn1, BTN_LONG_PRESS_12S_HOLD, btn_12s_hold_handler);
+```
+
+### 低功耗模式
+
+```c
+// 全局空闲回调函数
+void on_all_buttons_idle(void)
+{
+    printf("All buttons idle, stopping timer...\n");
+    stop_5ms_timer();  // 用户实现的停止定时器函数
+}
+
+// 在初始化时设置回调
+button_set_idle_callback(on_all_buttons_idle);
+
+// 在按键GPIO中断中启动定时器
+void button_gpio_interrupt_handler(void)
+{
+    // 检测到按键按下，启动定时器
+    start_5ms_timer();  // 用户实现的启动定时器函数
+}
+```
+
 ## API 参考
 
 ### 按键事件类型
@@ -225,8 +282,11 @@ typedef enum {
     BTN_PRESS_REPEAT,       // 重复按下检测
     BTN_SINGLE_CLICK,       // 单击完成
     BTN_DOUBLE_CLICK,       // 双击完成
+    BTN_TRIPLE_CLICK,       // 三击完成
     BTN_LONG_PRESS_START,   // 长按开始
     BTN_LONG_PRESS_HOLD,    // 长按保持
+    BTN_LONG_PRESS_6S_UP,   // 长按6秒抬起
+    BTN_LONG_PRESS_12S_HOLD,// 长按12秒到达
     BTN_NONE_PRESS          // 无事件
 } ButtonEvent;
 ```
@@ -234,28 +294,28 @@ typedef enum {
 ### 核心函数
 
 #### `void button_init(Button* handle, uint8_t(*pin_level)(uint8_t), uint8_t active_level, uint8_t button_id)`
-**功能**: Initialize button instance  
-**参数**: 
+**功能**: Initialize button instance
+**参数**:
 - `handle`: 按键句柄
 - `pin_level`: GPIO 读取函数指针
 - `active_level`: 有效电平 (0 或 1)
 - `button_id`: 按键 ID
 
 #### `void button_attach(Button* handle, ButtonEvent event, BtnCallback cb)`
-**功能**: Attach event callback function  
+**功能**: Attach event callback function
 **参数**:
 - `handle`: 按键句柄
 - `event`: 事件类型
 - `cb`: 回调函数
 
 #### `void button_detach(Button* handle, ButtonEvent event)`
-**功能**: Detach event callback function  
+**功能**: Detach event callback function
 **参数**:
-- `handle`: 按键句柄  
+- `handle`: 按键句柄
 - `event`: 事件类型
 
 #### `int button_start(Button* handle)`
-**功能**: Start button processing  
+**功能**: Start button processing
 **返回值**: 0=成功, -1=已存在, -2=参数错误
 
 #### `void button_stop(Button* handle)`
@@ -276,8 +336,15 @@ typedef enum {
 **功能**: Reset button state to idle
 
 #### `int button_is_pressed(Button* handle)`
-**功能**: Check if button is currently pressed  
+**功能**: Check if button is currently pressed
 **返回值**: 1=按下, 0=未按下, -1=错误
+
+#### `void button_set_idle_callback(BtnIdleCallback cb)`
+**功能**: Set global callback for all buttons idle state
+**参数**:
+- `cb`: 回调函数，当所有按键变为空闲状态时调用
+
+**使用场景**: 低功耗模式，当所有按键空闲时可以停止定时器
 
 ## 配置选项
 
@@ -285,9 +352,11 @@ typedef enum {
 
 ```c
 #define TICKS_INTERVAL          5       // 定时器中断间隔 (ms)
-#define DEBOUNCE_TIME_MS        15      // 去抖时间 (ms)
-#define SHORT_PRESS_TIME_MS     300     // 短按时间阈值 (ms)
-#define LONG_PRESS_TIME_MS      1000    // 长按时间阈值 (ms)
+#define DEBOUNCE_TICKS          3       // 去抖滤波深度
+#define SHORT_TICKS             (300 / TICKS_INTERVAL)   // 短按阈值 (ticks)
+#define LONG_TICKS              (1000 / TICKS_INTERVAL)  // 长按阈值 (ticks)
+#define LONG_PRESS_6S_TICKS     (6000 / TICKS_INTERVAL)  // 6秒长按 (ticks)
+#define LONG_PRESS_12S_TICKS    (12000 / TICKS_INTERVAL) // 12秒长按 (ticks)
 #define PRESS_REPEAT_MAX_NUM    15      // 最大重复计数
 ```
 
@@ -298,6 +367,8 @@ typedef enum {
 3. **回调函数**: 回调函数应尽量简短，避免长时间阻塞
 4. **内存管理**: 按键实例可以是全局变量或动态分配
 5. **多按键**: 每个物理按键需要独立的 Button 实例和唯一的 button_id
+6. **低功耗模式**: 使用 `button_set_idle_callback()` 设置全局空闲回调，在回调中停止定时器以降低功耗
+7. **多级长按**: 12秒事件优先级最高，触发后不再触发长按保持事件；6秒事件与12秒事件互斥
 
 ## 状态机说明
 
