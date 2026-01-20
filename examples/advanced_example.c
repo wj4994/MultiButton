@@ -58,9 +58,17 @@ void on_press_down(Button* btn) { generic_event_handler(btn, "Press Down"); }
 void on_press_up(Button* btn) { generic_event_handler(btn, "Press Up"); }
 void on_single_click(Button* btn) { generic_event_handler(btn, "Single Click"); }
 void on_double_click(Button* btn) { generic_event_handler(btn, "Double Click"); }
+void on_triple_click(Button* btn) { generic_event_handler(btn, "Triple Click"); }
 void on_long_press_start(Button* btn) { generic_event_handler(btn, "Long Press Start"); }
 void on_long_press_hold(Button* btn) { generic_event_handler(btn, "Long Press Hold"); }
+void on_long_press_6s_up(Button* btn) { generic_event_handler(btn, "Long Press 6s Released"); }
+void on_long_press_12s_hold(Button* btn) { generic_event_handler(btn, "Long Press 12s Reached"); }
 void on_press_repeat(Button* btn) { generic_event_handler(btn, "Press Repeat"); }
+
+void on_all_buttons_idle(void)
+{
+	printf("⚡ All buttons idle - ready for low power mode\n");
+}
 
 // Special handler for button configuration
 void on_config_button_click(Button* btn)
@@ -103,14 +111,20 @@ void init_button(int index, uint8_t button_id, int enable_all_events)
         button_attach(&buttons[index], BTN_PRESS_UP, on_press_up);
         button_attach(&buttons[index], BTN_SINGLE_CLICK, on_single_click);
         button_attach(&buttons[index], BTN_DOUBLE_CLICK, on_double_click);
+        button_attach(&buttons[index], BTN_TRIPLE_CLICK, on_triple_click);
         button_attach(&buttons[index], BTN_LONG_PRESS_START, on_long_press_start);
         button_attach(&buttons[index], BTN_LONG_PRESS_HOLD, on_long_press_hold);
+        button_attach(&buttons[index], BTN_LONG_PRESS_6S_UP, on_long_press_6s_up);
+        button_attach(&buttons[index], BTN_LONG_PRESS_12S_HOLD, on_long_press_12s_hold);
         button_attach(&buttons[index], BTN_PRESS_REPEAT, on_press_repeat);
     } else {
-        // Only essential events
         button_attach(&buttons[index], BTN_SINGLE_CLICK, on_single_click);
         button_attach(&buttons[index], BTN_DOUBLE_CLICK, on_double_click);
+        button_attach(&buttons[index], BTN_TRIPLE_CLICK, on_triple_click);
         button_attach(&buttons[index], BTN_LONG_PRESS_START, on_long_press_start);
+        button_attach(&buttons[index], BTN_LONG_PRESS_HOLD, on_long_press_hold);
+        button_attach(&buttons[index], BTN_LONG_PRESS_6S_UP, on_long_press_6s_up);
+        button_attach(&buttons[index], BTN_LONG_PRESS_12S_HOLD, on_long_press_12s_hold);
     }
     
     button_start(&buttons[index]);
@@ -121,21 +135,19 @@ void buttons_init(void)
 {
     printf("🔧 Initializing %d buttons...\n", MAX_BUTTONS);
     
-    // Button 1: Full feature set
+    button_set_idle_callback(on_all_buttons_idle);
+    
     init_button(0, 1, 1);
     printf("  ✅ Button 1: Full feature set\n");
     
-    // Button 2: Essential events only
     init_button(1, 2, 0);
     printf("  ✅ Button 2: Essential events only\n");
     
-    // Button 3: Configuration button with special handler
     init_button(2, 3, 0);
     button_detach(&buttons[2], BTN_SINGLE_CLICK);
     button_attach(&buttons[2], BTN_SINGLE_CLICK, on_config_button_click);
     printf("  ✅ Button 3: Configuration button\n");
     
-    // Button 4: Dynamic configuration demo
     init_button(3, 4, 0);
     printf("  ✅ Button 4: Dynamic configuration demo\n");
     
@@ -216,18 +228,50 @@ void run_demo_sequence(void)
     simulate_button_press(1, 80);
     usleep(500000);
     
-    printf("\nDemo 3: Long press demonstration\n");
+    printf("\nDemo 3: Triple click patterns\n");
+    simulate_button_press(1, 80);
+    usleep(50000);
+    simulate_button_press(1, 80);
+    usleep(50000);
+    simulate_button_press(1, 80);
+    usleep(500000);
+    
+    printf("\nDemo 4: Long press demonstration\n");
     simulate_button_press(2, 1200);
     usleep(300000);
     
-    printf("\nDemo 4: Rapid press sequence\n");
+    printf("\nDemo 5: 6s long press (release)\n");
+    button_states[0] = 1;
+    for (int i = 0; i < 6500 / 5; i++) {
+        button_ticks();
+        usleep(5000);
+    }
+    button_states[0] = 0;
+    for (int i = 0; i < 10; i++) {
+        button_ticks();
+        usleep(5000);
+    }
+    
+    printf("\nDemo 6: 12s long press (hold trigger)\n");
+    button_states[0] = 1;
+    for (int i = 0; i < 12500 / 5; i++) {
+        button_ticks();
+        usleep(5000);
+    }
+    button_states[0] = 0;
+    for (int i = 0; i < 10; i++) {
+        button_ticks();
+        usleep(5000);
+    }
+    
+    printf("\nDemo 7: Rapid press sequence\n");
     for (int i = 0; i < 4; i++) {
         simulate_button_press(1, 60);
         usleep(70000);
     }
     usleep(500000);
     
-    printf("\nDemo 5: Configuration button test\n");
+    printf("\nDemo 8: Configuration button test\n");
     for (int i = 0; i < 3; i++) {
         simulate_button_press(3, 100);
         usleep(200000);

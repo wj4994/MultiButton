@@ -14,6 +14,8 @@
 #define DEBOUNCE_TICKS          3    // MAX 7 (0 ~ 7) - debounce filter depth
 #define SHORT_TICKS             (300 / TICKS_INTERVAL)   // short press threshold
 #define LONG_TICKS              (1000 / TICKS_INTERVAL)  // long press threshold
+#define LONG_PRESS_6S_TICKS     (6000 / TICKS_INTERVAL)  // 6 seconds long press
+#define LONG_PRESS_12S_TICKS    (12000 / TICKS_INTERVAL) // 12 seconds long press
 #define PRESS_REPEAT_MAX_NUM    15   // maximum repeat counter value
 
 // Forward declaration
@@ -21,6 +23,7 @@ typedef struct _Button Button;
 
 // Button callback function type
 typedef void (*BtnCallback)(Button* btn_handle);
+typedef void (*BtnIdleCallback)(void);
 
 // Button event types
 typedef enum {
@@ -29,8 +32,11 @@ typedef enum {
 	BTN_PRESS_REPEAT,       // repeated press detected
 	BTN_SINGLE_CLICK,       // single click completed
 	BTN_DOUBLE_CLICK,       // double click completed
+	BTN_TRIPLE_CLICK,       // triple click completed
 	BTN_LONG_PRESS_START,   // long press started
 	BTN_LONG_PRESS_HOLD,    // long press holding
+	BTN_LONG_PRESS_6S_UP,   // long press 6s released
+	BTN_LONG_PRESS_12S_HOLD,// long press 12s reached
 	BTN_EVENT_COUNT,        // total number of events
 	BTN_NONE_PRESS          // no event
 } ButtonEvent;
@@ -53,6 +59,8 @@ struct _Button {
 	uint8_t  debounce_cnt : 3;          // debounce counter (0-7)
 	uint8_t  active_level : 1;          // active GPIO level (0 or 1)
 	uint8_t  button_level : 1;          // current button level
+	uint8_t  long_6s_triggered : 1;     // 6s event triggered flag
+	uint8_t  long_12s_triggered : 1;    // 12s event triggered flag
 	uint8_t  button_id;                 // button identifier
 	uint8_t  (*hal_button_level)(uint8_t button_id);  // HAL function to read GPIO
 	BtnCallback cb[BTN_EVENT_COUNT];    // callback function array
@@ -71,6 +79,8 @@ ButtonEvent button_get_event(Button* handle);
 int  button_start(Button* handle);
 void button_stop(Button* handle);
 void button_ticks(void);
+
+void button_set_idle_callback(BtnIdleCallback cb);
 
 // Utility functions
 uint8_t button_get_repeat_count(Button* handle);

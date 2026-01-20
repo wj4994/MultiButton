@@ -10,6 +10,7 @@
 
 // Button handle list head
 static Button* head_handle = NULL;
+static BtnIdleCallback idle_callback = NULL;
 
 // Forward declarations
 static void button_handler(Button* handle);
@@ -34,6 +35,8 @@ void button_init(Button* handle, uint8_t(*pin_level)(uint8_t), uint8_t active_le
 	handle->active_level = active_level;
 	handle->button_id = button_id;
 	handle->state = BTN_STATE_IDLE;
+	handle->long_6s_triggered = 0;
+	handle->long_12s_triggered = 0;
 }
 
 /**
@@ -96,6 +99,8 @@ void button_reset(Button* handle)
 	handle->repeat = 0;
 	handle->event = (uint8_t)BTN_NONE_PRESS;
 	handle->debounce_cnt = 0;
+	handle->long_6s_triggered = 0;
+	handle->long_12s_triggered = 0;
 }
 
 /**
@@ -194,6 +199,9 @@ static void button_handler(Button* handle)
 			} else if (handle->repeat == 2) {
 				handle->event = (uint8_t)BTN_DOUBLE_CLICK;
 				EVENT_CB(BTN_DOUBLE_CLICK);
+			} else if (handle->repeat == 3) {
+				handle->event = (uint8_t)BTN_TRIPLE_CLICK;
+				EVENT_CB(BTN_TRIPLE_CLICK);
 			}
 			handle->state = BTN_STATE_IDLE;
 		}
@@ -218,13 +226,32 @@ static void button_handler(Button* handle)
 
 	case BTN_STATE_LONG_HOLD:
 		if (handle->button_level == handle->active_level) {
-			// Continue holding
-			handle->event = (uint8_t)BTN_LONG_PRESS_HOLD;
-			EVENT_CB(BTN_LONG_PRESS_HOLD);
+			if (!handle->long_12s_triggered &&
+			    handle->ticks > LONG_PRESS_12S_TICKS) {
+				handle->long_12s_triggered = 1;
+				handle->event = (uint8_t)BTN_LONG_PRESS_12S_HOLD;
+				EVENT_CB(BTN_LONG_PRESS_12S_HOLD);
+			}
+			else if (!handle->long_6s_triggered &&
+				 !handle->long_12s_triggered &&
+				 handle->ticks > LONG_PRESS_6S_TICKS) {
+				handle->long_6s_triggered = 1;
+			}
+			else if (!handle->long_12s_triggered) {
+				handle->event = (uint8_t)BTN_LONG_PRESS_HOLD;
+				EVENT_CB(BTN_LONG_PRESS_HOLD);
+			}
 		} else {
-			// Released from long press
 			handle->event = (uint8_t)BTN_PRESS_UP;
 			EVENT_CB(BTN_PRESS_UP);
+			
+			if (handle->long_6s_triggered && !handle->long_12s_triggered) {
+				handle->event = (uint8_t)BTN_LONG_PRESS_6S_UP;
+				EVENT_CB(BTN_LONG_PRESS_6S_UP);
+			}
+			
+			handle->long_6s_triggered = 0;
+			handle->long_12s_triggered = 0;
 			handle->state = BTN_STATE_IDLE;
 		}
 		break;
@@ -279,14 +306,38 @@ void button_stop(Button* handle)
 }
 
 /**
+  * @brief  Set the global idle callback function
+  * @param  cb: callback function called when all buttons are idle
+  * @retval None
+  */
+void button_set_idle_callback(BtnIdleCallback cb)
+{
+	idle_callback = cb;
+}
+
+/**
   * @brief  Background ticks, timer repeat invoking interval 5ms
   * @param  None
   * @retval None
   */
 void button_ticks(void)
 {
+	static uint8_t last_all_idle = 0;
+	uint8_t current_all_idle = 1;
+	
 	Button* target;
 	for (target = head_handle; target; target = target->next) {
 		button_handler(target);
+		if (target->state != BTN_STATE_IDLE) {
+			current_all_idle = 0;
+		}
 	}
+	
+	if (current_all_idle && !last_all_idle && head_handle != NULL) {
+		if (idle_callback) {
+			idle_callback();
+		}
+	}
+	
+	last_all_idle = current_all_idle;
 }
